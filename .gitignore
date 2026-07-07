@@ -1,0 +1,14 @@
+.idea/
+.vscode/
+__pycache__/
+allure-results/
+.venv/
+venv/
+.pytest_cache/
+coverage.xml
+*.cover
+reports/
+*.egg-info/
+build/
+dist/
+.coverage
