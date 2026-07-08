@@ -1,4 +1,4 @@
-class TestAPI():
+class TestAPI:
     def test_api1(self):
         assert True
 
@@ -6,7 +6,7 @@ class TestAPI():
         assert True
 
 
-class TestAPI2():
+class TestAPI2:
     def test_api3(self):
         assert True
 

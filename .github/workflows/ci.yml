@@ -52,9 +52,17 @@ jobs:
             --alluredir=allure-results \
             --junitxml=junit.xml
 
-      - name: Lint code
+      - name: Lint (ruff check)
         if: always()
-        run: flake8 app testcases --max-line-length=120
+        run: ruff check .
+
+      - name: Format check (ruff format)
+        if: always()
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        if: always()
+        run: mypy app
 
       - name: Publish test report
         if: always()
@@ -82,11 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       actions: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      contents: write
     steps:
       - name: Download test reports
         uses: actions/download-artifact@v8
@@ -97,20 +101,65 @@ jobs:
       - name: Setup Allure CLI
         run: npm install -g allure-commandline
 
-      - name: Generate Allure report
-        run: allure generate reports/allure-results -o allure-report --clean
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v6
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v5
+      - name: Checkout gh-pages
+        id: co
+        uses: actions/checkout@v7
         with:
-          path: allure-report
+          ref: gh-pages
+          path: site
+        continue-on-error: true
 
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v5
+      - name: Init gh-pages if missing
+        if: steps.co.outcome == 'failure'
+        run: |
+          mkdir -p site
+          cd site
+          git init -b gh-pages
+
+      - name: Generate Allure report with history
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          mkdir -p reports/allure-results/history
+          if [ -d site/history ]; then
+            cp -r site/history/. reports/allure-results/history/
+          fi
+          allure generate reports/allure-results -o "site/$RUN_ID" --clean
+          rm -rf site/history
+          if [ -d "site/$RUN_ID/history" ]; then
+            cp -r "site/$RUN_ID/history" site/history
+          else
+            mkdir -p site/history
+          fi
+
+      - name: Build index page
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          cd site
+          {
+            printf '<!DOCTYPE html>\n'
+            printf '<html><head><meta charset="utf-8"><title>Allure Reports</title>\n'
+            printf '<style>body{font-family:sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem}a{color:#0969da}</style></head><body>\n'
+            printf '<h1>Allure Test Reports</h1>\n'
+            printf '<p>Latest build: <a href="%s/">%s</a></p>\n' "$RUN_ID" "$RUN_ID"
+            printf '<h2>All builds</h2><ul>\n'
+            for d in $(ls -1 | grep -E '^[0-9]+$' | sort -rn); do
+              printf '<li><a href="%s/">Build %s</a></li>\n' "$d" "$d"
+            done
+            printf '</ul></body></html>\n'
+          } > index.html
+
+      - name: Publish to gh-pages
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          cd site
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy allure report $RUN_ID" || echo "nothing to commit"
+          git push "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:gh-pages
 
   docker-build-push:
     if: startsWith(github.ref, 'refs/tags/')
