@@ -13,12 +13,10 @@ on:
       - "**/*.md"
       - "docs/**"
 
-# Cancel superseded runs; only the latest commit keeps running
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-# Least privilege: test-reporter needs checks:write
 permissions:
   contents: read
   checks: write
@@ -28,11 +26,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout source code
       - name: Checkout Code
         uses: actions/checkout@v7
 
-      # 2. Setup Python (with pip cache)
       - name: Setup Python
         uses: actions/setup-python@v6
         with:
@@ -40,17 +36,14 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      # 3. Install dependencies
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # 4. Install project (editable)
       - name: Install project
         run: pip install -e .
 
-      # 5. Run tests with coverage + reports (junit/html/allure)
       - name: Run tests with coverage
         run: |
           PYTHONPATH=. pytest \
@@ -62,12 +55,10 @@ jobs:
             --alluredir=allure-results \
             --junitxml=junit.xml
 
-      # 6. Lint with flake8 (run even if tests failed)
       - name: Lint code
         if: always()
         run: flake8 app testcases --max-line-length=120
 
-      # 7. Publish test results as a commit/PR check
       - name: Publish test report
         if: always()
         uses: dorny/test-reporter@v3
@@ -76,7 +67,6 @@ jobs:
           path: junit.xml
           reporter: java-junit
 
-      # 8. Upload reports as artifact (always, for debugging on failure)
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v7
@@ -89,27 +79,59 @@ jobs:
             junit.xml
             allure-results/
 
+  deploy-report:
+    needs: test-lint-coverage
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download test reports
+        uses: actions/download-artifact@v8
+        with:
+          name: test-reports
+          path: reports
+
+      - name: Setup Allure CLI
+        run: npm install -g allure-commandline
+
+      - name: Generate Allure report
+        run: allure generate reports/allure-results -o allure-report --clean
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: allure-report
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
+
   docker-build-push:
     if: startsWith(github.ref, 'refs/tags/')
     needs: test-lint-coverage
     runs-on: ubuntu-latest
     steps:
-      # 1. Checkout source code
       - name: Checkout code
         uses: actions/checkout@v7
 
-      # 2. Log in to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3. Set up Docker Buildx (multi-platform build)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 4. Generate image version tag
       - name: Generate version
         id: version
         run: |
@@ -126,7 +148,6 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
-      # Build and push Docker image
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
