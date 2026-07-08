@@ -6,4 +6,5 @@ pytest-ordering
 pytest-rerunfailures
 allure-pytest
 pytest-cov
-flake8
+ruff
+mypy
