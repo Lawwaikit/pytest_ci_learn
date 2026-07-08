@@ -15,6 +15,7 @@ class TestCalculator:
         (-1, 1, 0),
         (10, 20, 30),
         (100, 200, 300),
+        (1000, 2000, 3000),
     ])
     @pytest.mark.smoke
     @allure.story("加法模块")
